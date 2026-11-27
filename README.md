@@ -103,7 +103,9 @@ function RequestPage({ request }) {
 ```
 
 `data-project` is `v1`, `v2` or `portal`. On V1/V2 the toolbar pushes the page down 44 px (top-pinned fixed/sticky
-elements move below it) and links to the sibling hosts (`v1.`, `v2.`, the apex). The tour is offered on a person's
+elements move below it) and links to the sibling hosts (`v1.`, `v2.`, the apex). The tour is 6 short steps: welcome,
+the top bar (portal: pick a version), Give feedback, then it **opens the feedback tool** and points at the type buttons,
+**Screenshot** and **Point at it** (ending with Done or Try it now). It is offered on a person's
 first 3 visits (visit = back after 30+ min), once per visit; finishing ends it; the 1st skip points at the Tour button
 and offers to resume next visit; the 2nd skip is final; part-way tours are still offered after visit 3. State is the
 `yfb_tour` cookie on `.overyondrdev.com`. On the portal, the form asks whether feedback is about V1, V2 or both, and any

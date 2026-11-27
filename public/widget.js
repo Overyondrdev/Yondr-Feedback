@@ -583,30 +583,34 @@ kbd{font:600 11px/1 var(--sans);padding:2px 5px;border-radius:5px;border:1px sol
   })();
   function tourButton() { return bar ? bar.querySelector('.b-tour') : document.querySelector('[data-yfb-tour]'); }
 
+  // The tour: as few steps and words as possible. Step 4 opens the feedback tool and points at its basics
+  // (type, Screenshot, Point at it) so people see exactly what to do.
+  function inPanel(sel) { return function () { return panel.querySelector('[data-tour="' + sel + '"]'); }; }
   function tourSteps() {
-    var how = { wide: true, eyebrow: 'Giving feedback', title: 'Three steps, about a minute', how: [
-      ['Pick a type and say what you noticed', 'Bug, Design, Copy, Idea, Question or Love it. Plain words are perfect.'],
-      ['Show us where', 'Add a screenshot and mark it up, or use Point at it to select the exact spot on the page.'],
-      ['Send it, then watch for replies', 'We record the page and your screen size for you. Replies from the web team appear under My feedback.'],
-    ], last: true };
+    var tool = [
+      { panel: true, target: inPanel('type'), eyebrow: 'Feedback tool', title: 'Pick a type, then say what you noticed',
+        text: 'Plain words are perfect. We note the page for you.' },
+      { panel: true, target: inPanel('shot'), eyebrow: 'Screenshot', title: 'Show it',
+        text: 'Capture the page, then draw or type on it to mark the problem.' },
+      { panel: true, target: inPanel('point'), eyebrow: 'Point at it', title: 'Or point at the exact spot',
+        text: 'Click the part of the page you mean. Then press Send.', last: true },
+    ];
     if (SITE === 'portal') return [
-      { wide: true, logo: true, eyebrow: 'Welcome', title: 'Welcome to the Yondr website preview',
-        text: 'Two versions of the Yondr website live here, private to the Yondr team. This short tour shows you how to get around and how to tell us what you think.' },
+      { wide: true, logo: true, eyebrow: 'Welcome', title: 'The Yondr website preview',
+        text: 'Two versions of our website, private to the team. A quick look at how to get around and give feedback.' },
       { target: function () { return document.querySelector('.cards') || document.querySelector('main'); }, eyebrow: 'Choose', title: 'Pick a version',
-        text: 'V1 is today’s overyondr.com, rebuilt. V2 is the Loba redesign: a work in progress on the way to our new website, not the final version, so your feedback shapes where it goes next. Open either one: a toolbar at the top of every page brings you back here or switches versions.' },
-      { target: function () { return document.querySelector('[data-yfb-open]') || launcher; }, eyebrow: 'Feedback', title: 'Give feedback from the top bar',
-        text: 'Thought of something already? Use Give feedback right here. It’s also in the top bar of every V1 and V2 page, so you can send feedback wherever you are.' },
-      how,
-    ];
+        text: 'V1 is today’s site. V2 is the redesign, still in progress.' },
+      { target: function () { return document.querySelector('[data-yfb-open]') || launcher; }, eyebrow: 'Feedback', title: 'Give feedback',
+        text: 'Here, or in the top bar of any page.' },
+    ].concat(tool);
     return [
-      { wide: true, logo: true, eyebrow: 'Welcome', title: 'Welcome to the Yondr website preview',
-        text: 'You’re looking at ' + (SITE === 'v1' ? 'V1, today’s overyondr.com rebuilt' : 'V2, the Loba redesign. It’s a work in progress on the way to our new website, not the final version, so your feedback shapes where it goes next') + '. This short tour shows you how to get around and how to tell us what you think.' },
-      { target: function () { return bar.querySelector('.b-back'); }, eyebrow: 'Navigate', title: 'Back to all versions', text: 'Return to the version page at any time.' },
-      { target: function () { return bar.querySelector('.b-switch'); }, eyebrow: 'Compare', title: 'Switch between V1 and V2', text: 'Jump to the other version to compare. You’ll land on its home page.' },
-      { target: function () { return barFb; }, eyebrow: 'Feedback', title: 'Give feedback from the top bar',
-        text: 'Give feedback is in the top bar of every page. Click it whenever something catches your eye. We note the page you’re on for you.' },
-      how,
-    ];
+      { wide: true, logo: true, eyebrow: 'Welcome', title: SITE === 'v1' ? 'This is V1: today’s site, rebuilt' : 'This is V2: the redesign, in progress',
+        text: 'A quick look at how to get around and give feedback.' },
+      { target: function () { return bar; }, eyebrow: 'Get around', title: 'Use the top bar',
+        text: 'Switch between V1 and V2, or go back to all versions.' },
+      { target: function () { return barFb; }, eyebrow: 'Feedback', title: 'Spot something? Click Give feedback',
+        text: 'It’s on every page.' },
+    ].concat(tool);
   }
   var tourEl = null;
   // Shows a sequence of cards. Each card can spotlight a target (`target()`), and either uses the standard
@@ -615,22 +619,29 @@ kbd{font:600 11px/1 var(--sans);padding:2px 5px;border-radius:5px;border:1px sol
     if (tourEl) return;
     if (state.open) toggle(false);
     hooks = hooks || {};
-    var idx = 0;
+    var idx = 0, openedPanel = false;
+    // Steps marked `panel` show the feedback tool open (on the New tab) behind the tour card.
+    function showPanel(want) {
+      if (want && !state.open) { state.tab = 'new'; state.detail = null; toggle(true); openedPanel = true; }
+      else if (want && state.tab !== 'new') { state.tab = 'new'; state.detail = null; render(); }
+      else if (!want && state.open && openedPanel) { toggle(false); openedPanel = false; }
+    }
     var veil = el('div', { class: 'veil' });
     var spot = el('div', { class: 'spot hidden' });
     var card = el('div', { class: 'tcard', role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': 'yfb-tour-title' });
     tourEl = el('div', { class: 'tour' }, [veil, spot, card]);
     root.appendChild(tourEl);
-    function close() {
+    function close(keepPanel) {
       document.removeEventListener('keydown', onKey, true);
       window.removeEventListener('resize', place);
       if (tourEl) tourEl.remove();
       tourEl = null;
+      if (!keepPanel) showPanel(false);
     }
     function finish(openPanel) {
-      close();
+      close(openPanel);
       if (hooks.onFinish) hooks.onFinish();
-      if (openPanel) toggle(true); else if (barFb) barFb.focus(); else launcher.focus();
+      if (openPanel) { if (!state.open) toggle(true); } else if (barFb) barFb.focus(); else launcher.focus();
     }
     function skip() { close(); if (hooks.onSkip) hooks.onSkip(idx); }
     function onKey(e) {
@@ -687,6 +698,7 @@ kbd{font:600 11px/1 var(--sans);padding:2px 5px;border-radius:5px;border:1px sol
       idx = i;
       if (hooks.onStep) hooks.onStep(i);
       var st = steps[i];
+      showPanel(!!st.panel);
       card.className = 'tcard' + (st.wide ? ' wide' : '');
       card.innerHTML = '';
       if (st.logo) card.appendChild(el('img', { class: 'wmk', src: BASE + '/brand/yondr-dark-green.svg', alt: 'Yondr' }));
@@ -705,8 +717,9 @@ kbd{font:600 11px/1 var(--sans);padding:2px 5px;border-radius:5px;border:1px sol
           return b;
         });
       } else if (st.last) {
-        buttons = [el('button', { class: 'ghost', type: 'button', text: 'Start exploring', onclick: function () { finish(false); } })];
-        primary = el('button', { class: 'primary', type: 'button', text: 'Give feedback now', onclick: function () { finish(true); } });
+        buttons = [el('button', { class: 'ghost', type: 'button', text: 'Done', onclick: function () { finish(false); } })];
+        if (i > 0) buttons.unshift(el('button', { class: 'tskip', type: 'button', text: 'Back', onclick: function () { go(i - 1); } }));
+        primary = el('button', { class: 'primary', type: 'button', text: 'Try it now', onclick: function () { finish(true); } });
         buttons.push(primary);
       } else {
         buttons = [el('button', { class: 'tskip', type: 'button', text: 'Skip for now', onclick: skip })];
@@ -723,6 +736,8 @@ kbd{font:600 11px/1 var(--sans);padding:2px 5px;border-radius:5px;border:1px sol
         if (r.top < 0 || r.top > window.innerHeight * 0.6) { t.scrollIntoView({ block: 'start', behavior: 'smooth' }); setTimeout(place, 450); }
       }
       place();
+      // The panel slides in; measure again once it has settled so the spotlight sits on the right control.
+      if (st.panel) setTimeout(place, 380);
       if (primary) primary.focus();
     }
     document.addEventListener('keydown', onKey, true);
@@ -758,8 +773,8 @@ kbd{font:600 11px/1 var(--sans);padding:2px 5px;border-radius:5px;border:1px sol
     runCards([{
       wide: true, logo: true, eyebrow: 'Quick tour',
       title: started ? 'Pick up where you left off?' : 'Want the quick tour now?',
-      text: started ? 'You stopped at step ' + (at + 1) + ' of ' + steps.length + '. It takes less than a minute to finish.'
-        : 'It takes about a minute and shows you how to get around the preview and how to give feedback.',
+      text: started ? 'You stopped at step ' + (at + 1) + ' of ' + steps.length + '.'
+        : 'Under a minute: getting around, and how to give feedback.',
       actions: [
         { label: 'Not now', kind: 'tskip', run: function (c) { c.skip(); } },
         { label: started ? 'Continue the tour' : 'Start the tour', run: function (c) { c.close(); startTour(at, true); } },
@@ -891,7 +906,7 @@ kbd{font:600 11px/1 var(--sans);padding:2px 5px;border-radius:5px;border:1px sol
       bodyEl.appendChild(about);
     }
     bodyEl.appendChild(el('span', { class: 'label', text: 'What kind of feedback?' }));
-    var chips = el('div', { class: 'chips', role: 'group', 'aria-label': 'Feedback type' });
+    var chips = el('div', { class: 'chips', role: 'group', 'aria-label': 'Feedback type', 'data-tour': 'type' });
     TYPES.forEach(function (t) {
       chips.appendChild(el('button', { class: 'chip', type: 'button', title: t[2], 'aria-pressed': state.type === t[0] ? 'true' : 'false', text: t[1],
         onclick: function () { state.type = t[0]; saveDraft(); render(); } }));
@@ -915,8 +930,8 @@ kbd{font:600 11px/1 var(--sans);padding:2px 5px;border-radius:5px;border:1px sol
     var file = el('input', { type: 'file', accept: 'image/*', multiple: true, class: 'hidden' });
     file.addEventListener('change', function () { [].slice.call(file.files).forEach(addFile); file.value = ''; });
     bodyEl.appendChild(el('div', { class: 'tools' }, [
-      el('button', { class: 'tool', type: 'button', html: ICON.camera + 'Screenshot', title: 'Capture this page and mark it up', onclick: captureFlow }),
-      el('button', { class: 'tool', type: 'button', html: ICON.target + 'Point at it', title: 'Click the exact element you mean', onclick: pickFlow }),
+      el('button', { class: 'tool', type: 'button', html: ICON.camera + 'Screenshot', title: 'Capture this page and mark it up', 'data-tour': 'shot', onclick: captureFlow }),
+      el('button', { class: 'tool', type: 'button', html: ICON.target + 'Point at it', title: 'Click the exact element you mean', 'data-tour': 'point', onclick: pickFlow }),
       el('button', { class: 'tool', type: 'button', html: ICON.upload + 'Upload', title: 'Attach an image (or paste / drop one)', onclick: function () { file.click(); } }),
       file,
     ]));
