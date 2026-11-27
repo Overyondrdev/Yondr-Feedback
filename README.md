@@ -153,6 +153,14 @@ and assets with most feedback, activity), Inbox (filters: search, status, type, 
 owner, sort), Board (drag between statuses), Themes & summary (Workers AI), Errors (browser errors from embedding
 pages, by project and page), People & access, CSV export.
 
+Person fields use the shared Yondr people picker (`https://auth.overyondrdev.com/people-picker.js`,
+overyondr-website-v1 `docs/PLATFORM.md` §8): type a letter or two of a name and pick from at most 6 people. That covers
+an item's **Owner** (assignee: any Yondr person, cleared to unassign), the Inbox **owner filter** and **Add admin**
+in People & access. People & access shows each admin's and contributor's directory name and title
+(`auth.overyondrdev.com/api/people/lookup`), falling back to the email when the directory doesn't know them. The
+admin page's CSP allows `https://auth.overyondrdev.com` in `script-src` and `connect-src` for this; nothing else.
+The widget doesn't load the picker.
+
 Roles live in the D1 `admins` table: `owner` or `admin`. Admins see and manage all feedback and add admins; only an
 owner can add owners, change an owner's role or remove an owner; nobody can remove themselves. Everyone else who
 signs in sees an "Admins only" page (the widget works for every `@overyondr.com` person).

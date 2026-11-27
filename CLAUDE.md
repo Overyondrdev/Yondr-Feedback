@@ -36,6 +36,8 @@ CORS, hosts or deploys.
   state-changing request needs `X-Yondr-Feedback: 1` and an allowed `Origin`. Don't loosen these; keep the tests.
 - Keep the API backwards compatible: embedded widgets update within 5 minutes (widget cache) but pages may stay open
   longer. Add fields; don't remove or rename them. `site` stays as an alias of `project`.
+- Person fields use the shared directory picker (overyondr-website-v1 docs/PLATFORM.md §8); admin dashboard only, not
+  the widget.
 - Widget: no dependencies, Shadow DOM, keyboard operable, works at 375 px, `prefers-reduced-motion` respected. The
   website toolbar and tour stay behind `data-toolbar="website"`.
 - **Never commit secrets or personal email addresses** (this repository is public). Owner lists are data in D1, not
