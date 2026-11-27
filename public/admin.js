@@ -188,7 +188,9 @@
     var y = window.scrollY;
     keepFocus(mainEl, function () {
       mainEl.innerHTML = '';
-      ({ overview: overview, inbox: inbox, board: board, themes: themes, errors: errors, people: people }[S.view] || overview)();
+      // Only known views: S.view comes from the URL hash, so never look it up on a plain object (e.g. "#constructor").
+      var views = { overview: overview, inbox: inbox, board: board, themes: themes, errors: errors, people: people };
+      (Object.prototype.hasOwnProperty.call(views, S.view) ? views[S.view] : overview)();
     });
     if (soft) window.scrollTo(0, y);
   }
