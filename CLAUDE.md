@@ -14,13 +14,14 @@ CORS, hosts or deploys.
 | `src/api.js` | The API (`/api/*`), incl. the admin-role rules (`adminChangeProblem`) |
 | `src/schema.js` | D1 schema, applied automatically; additive changes only (`ADDED_COLUMNS`) |
 | `src/ops.js` | Reports new/changed items to Yondr Ops (auto-fix triage, `feedback_critical`); no personal data |
+| `src/client-errors.js` | Browser-error reports from embedding pages (`/api/client-errors`): redaction, rate limit, Ops forwarding |
 | `src/auth.js` | Who is signed in (Yondr session; `DEV_EMAIL` locally) and their admin role |
 | `src/yondr-session.js` | **Unchanged copy** of `overyondr-website-v1/auth/src/session.js` (CI compares) |
-| `public/widget.js` | The embeddable widget (Shadow DOM, no dependencies); config parsing between `yfb-config` markers |
+| `public/widget.js` | The embeddable widget (Shadow DOM, no dependencies); config parsing between `yfb-config` markers, error capture between `yfb-errors` markers |
 | `public/admin.{html,js,css}` | Admin dashboard |
 | `public/brand/` | Yondr wordmarks and the brand fonts Fraunces + Inter Tight (OFL) used by widget and admin |
 | `scripts/build-static.mjs` | Bundles `public/` into `src/static.generated.js` (git-ignored) |
-| `scripts/check.mjs` | Repo rules: syntax, Wrangler safety, no personal emails, no Squarespace hosts |
+| `scripts/check.mjs` | Repo rules: syntax, Wrangler safety, no personal emails, no Squarespace hosts, no secrets (`scripts/secret-scan.mjs`) |
 | `test/` | `node --test`; `test/helpers.js` stands in for D1 with `node:sqlite` |
 
 ## Rules

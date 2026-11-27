@@ -5,6 +5,7 @@
 import { ensureSchema } from './schema.js';
 import { roleOf } from './auth.js';
 import { notifyOps } from './ops.js';
+import { listClientErrors, recordClientErrors } from './client-errors.js';
 
 const TYPES = ['bug', 'design', 'content', 'idea', 'question', 'praise', 'other'];
 const PRIORITIES = ['low', 'normal', 'high', 'critical'];
@@ -373,6 +374,11 @@ export async function handleApi(request, env, path, user, ctx) {
     }
     if (seg[2] === 'comments' && m === 'POST') return addComment(id, request, env, user, isAdmin);
     if (seg[2] === 'vote' && m === 'POST') return vote(id, request, env, user, isAdmin);
+  }
+  // Browser errors from embedding pages: anyone signed in may report; admins read (src/client-errors.js).
+  if (seg[0] === 'client-errors' && seg.length === 1) {
+    if (m === 'POST') return recordClientErrors(request, env, user, ctx);
+    if (m === 'GET') return adminOnly(() => listClientErrors(url, env));
   }
   if (seg[0] === 'attachments' && seg[1] && m === 'GET') return attachment(seg[1], env, user, isAdmin);
   if (seg[0] === 'stats' && m === 'GET') return adminOnly(() => stats(env));

@@ -19,6 +19,7 @@
     me: null, view: (location.hash.replace('#', '') || 'overview'), items: [], stats: null, summary: null, admins: [],
     filters: { q: '', status: 'new,reviewing,agreed,planned', type: '', project: '', asset: '', priority: '', assignee: '', sort: 'new' },
     openId: null, detail: null, lastSync: null, internal: false, generating: false,
+    errors: null, errorFilters: { project: '', days: '7' },
   };
 
   // ------------------------------------------------------------- helpers
@@ -82,6 +83,7 @@
     board: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="4" width="5" height="16" rx="1.5"/><rect x="10" y="4" width="5" height="10" rx="1.5"/><rect x="17" y="4" width="4" height="13" rx="1.5"/></svg>',
     themes: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M12 3l1.9 4.6L18.5 9.5l-4.6 1.9L12 16l-1.9-4.6L5.5 9.5l4.6-1.9z"/><path d="M19 15l.8 2 2 .8-2 .8-.8 2-.8-2-2-.8 2-.8z"/></svg>',
     people: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0"/><circle cx="17.5" cy="9" r="2.5"/><path d="M16.5 14.2A5 5 0 0 1 21.5 19"/></svg>',
+    errors: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 2.5 20h19z"/><path d="M12 10v4M12 17h.01"/></svg>',
     download: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v12M7 11l5 5 5-5M4 20h16"/></svg>',
     spark: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 3l1.9 4.6L18.5 9.5l-4.6 1.9L12 16l-1.9-4.6L5.5 9.5l4.6-1.9z"/></svg>',
     close: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg>',
@@ -105,7 +107,13 @@
   function loadItems() { return api(query()).then(function (d) { S.items = d.items; }); }
   function loadAll() {
     return Promise.all([loadItems(), api('stats').then(function (d) { S.stats = d; }), api('summary').then(function (d) { S.summary = d.summary; }),
-      api('admins').then(function (d) { S.admins = d.admins; })]).then(function () { S.lastSync = new Date(); });
+      api('admins').then(function (d) { S.admins = d.admins; }), loadErrors()]).then(function () { S.lastSync = new Date(); });
+  }
+  function loadErrors() {
+    var f = S.errorFilters, p = ['days=' + encodeURIComponent(f.days)];
+    if (f.project) p.push('project=' + encodeURIComponent(f.project));
+    // Older Workers have no /api/client-errors yet: show the tab empty rather than failing the dashboard.
+    return api('client-errors?' + p.join('&')).then(function (d) { S.errors = d; }).catch(function () { S.errors = { items: [], byProject: [], days: +f.days }; });
   }
   function loadDetail(id) { return api('feedback/' + id).then(function (d) { S.detail = d; }); }
 
@@ -149,7 +157,7 @@
     app.innerHTML = '';
     var openCount = S.stats ? Object.keys(S.stats.byStatus).filter(function (k) { return k !== 'done' && k !== 'wont_do'; }).reduce(function (a, k) { return a + S.stats.byStatus[k]; }, 0) : 0;
     navEl = h('nav', { class: 'nav', 'aria-label': 'Dashboard' });
-    [['overview', 'Overview'], ['inbox', 'Inbox', openCount], ['board', 'Board'], ['themes', 'Themes & summary'], ['people', 'People & access']].forEach(function (n) {
+    [['overview', 'Overview'], ['inbox', 'Inbox', openCount], ['board', 'Board'], ['themes', 'Themes & summary'], ['errors', 'Errors'], ['people', 'People & access']].forEach(function (n) {
       navEl.appendChild(h('button', { type: 'button', 'aria-current': S.view === n[0] ? 'page' : null, onclick: function () { go(n[0]); } }, [
         h('span', { html: ICONS[n[0]] }), n[1], n[2] ? h('span', { class: 'n', text: n[2] }) : null,
       ]));
@@ -180,7 +188,15 @@
     var y = window.scrollY;
     keepFocus(mainEl, function () {
       mainEl.innerHTML = '';
-      ({ overview: overview, inbox: inbox, board: board, themes: themes, people: people }[S.view] || overview)();
+      // Only known views: S.view comes from the URL hash, so it is matched against fixed names, never used as a key.
+      switch (S.view) {
+        case 'inbox': inbox(); break;
+        case 'board': board(); break;
+        case 'themes': themes(); break;
+        case 'errors': errors(); break;
+        case 'people': people(); break;
+        default: overview();
+      }
     });
     if (soft) window.scrollTo(0, y);
   }
@@ -419,6 +435,37 @@
   }
 
   // ------------------------------------------------------------- people
+  // ------------------------------------------------------------- browser errors
+  function errors() {
+    var d = S.errors || { items: [], byProject: [], days: 7 }, f = S.errorFilters;
+    mainEl.appendChild(head('Errors', 'JavaScript errors people’s browsers hit on pages with the feedback widget. No names, no query strings, no email addresses.'));
+    function sel(key, label, opts) {
+      var s = h('select', { class: 'input', 'aria-label': label, onchange: function () { f[key] = s.value; loadErrors().then(function () { renderMain(true); }); } });
+      Object.keys(opts).forEach(function (k) { s.appendChild(h('option', { value: k, text: opts[k], selected: f[key] === k })); });
+      return s;
+    }
+    var projects = { '': 'All projects' };
+    d.byProject.forEach(function (p) { projects[p.project] = projectName(p.project); });
+    if (f.project) projects[f.project] = projectName(f.project);
+    mainEl.appendChild(h('div', { class: 'toolbar' }, [sel('project', 'Project', projects), sel('days', 'Period', { '1': 'Last 24 hours', '7': 'Last 7 days', '30': 'Last 30 days' })]));
+    var totals = h('div', { class: 'rows' });
+    d.byProject.forEach(function (p) {
+      totals.appendChild(h('div', { class: 'errrow' }, [h('b', { text: projectName(p.project) }),
+        h('span', { class: 'meta', text: p.n + ' error' + (p.n === 1 ? '' : 's') + ' · ' + p.distinct_errors + ' different · last ' + ago(p.last_seen) })]));
+    });
+    var table = h('table', { class: 'errtable' }, [h('thead', {}, [h('tr', {}, ['Project', 'Page', 'Error', 'Source', 'Count', 'Last seen'].map(function (c) { return h('th', { scope: 'col', text: c }); }))])]);
+    var tbody = h('tbody');
+    d.items.forEach(function (e) {
+      tbody.appendChild(h('tr', {}, [h('td', { text: projectName(e.project) }), h('td', { class: 'mono', text: e.page_path }), h('td', { text: e.message }),
+        h('td', { class: 'mono', text: e.source || '—' }), h('td', { text: String(e.count) }), h('td', { title: e.last_seen + ' (first ' + e.first_seen + ')', text: ago(e.last_seen) })]));
+    });
+    table.appendChild(tbody);
+    mainEl.appendChild(h('div', { class: 'grid' }, [
+      h('div', { class: 'card' }, [h('h2', { text: 'By project' }), d.byProject.length ? totals : h('p', { class: 'meta', text: 'No browser errors in this period.' })]),
+      h('div', { class: 'card' }, [h('h2', { text: 'Recent errors' }), d.items.length ? h('div', { class: 'tablewrap', tabindex: '0', role: 'region', 'aria-label': 'Recent errors' }, [table]) : h('p', { class: 'meta', text: 'Nothing to show.' })]),
+    ]));
+  }
+
   function people() {
     var isOwner = S.me.role === 'owner';
     mainEl.appendChild(head('People & access', 'Admins can see and manage all feedback. Everyone at @overyondr.com can leave feedback.'));

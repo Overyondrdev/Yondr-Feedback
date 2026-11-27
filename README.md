@@ -29,6 +29,7 @@ sign-in cookie only reaches the API from those hosts, and the API only answers t
 | `data-asset-label` | none | The asset's human name, shown to the person and in the admin. |
 | `data-toolbar` | off | `website` = the website preview toolbar (All versions, V1/V2 switch, Tour, Give feedback) and the first-visit tour. Only for the website (V1, V2, portal). |
 | `data-position` | `right` | Where the launcher tab sits: `right`, `left`, or `none` (no tab; open it from your own button). |
+| `data-errors` | on | `off` = don't report this page's JavaScript errors (see *Browser errors*). |
 
 Known projects: `v1`, `v2`, `portal` (website), `ads` (ad library), `requests` (marketing requests), `cards`
 (Christmas cards). Any other id works; the admin shows it as is (add a friendly name in `PROJECTS` in
@@ -126,11 +127,31 @@ A launcher tab (or the toolbar button) opens a panel in a Shadow DOM (no style l
   while new. A dot shows new activity.
 - Alt+Shift+F hides/shows the launcher.
 
+## Browser errors
+
+Every page that embeds the widget also reports its own JavaScript errors (`window` `error` and
+`unhandledrejection`), so broken pages show up without anyone filing feedback. Turn it off per page with
+`data-errors="off"`.
+
+- **What is sent**: the error message, the script URL without query string or fragment plus line:column, the page path
+  (no query string or fragment) and a count. Email addresses are replaced by `[email]`. Nothing a person typed is ever
+  read; an unhandled rejection whose reason isn't an `Error` or string is reported only by its type. Errors from
+  browser extensions are ignored. The server cleans everything again (`src/client-errors.js`, plus `redact()`).
+- **How much**: de-duplicated by message + source (repeats only add to the count); at most **20 different errors per
+  page view**. Sent in one batch every 30 seconds and when the page is hidden or left (`fetch` with `keepalive`,
+  `credentials: 'include'` and `X-Yondr-Feedback: 1`; `sendBeacon` can't carry the header). Reporting stops for the
+  page view after a 401, 403 or 429.
+- **Limits**: 60 requests per person per hour (429 + `Retry-After` after that), 20 errors per request.
+- **Where**: the admin's **Errors** tab (by project and page, last 24 hours / 7 / 30 days).
+- **Yondr Ops**: when a project's errors in the last 15 minutes cross a multiple of 10 (10, 20, 30, …), a
+  `client_errors` event is sent to Ops (below).
+
 ## Admin
 
 https://feedback.overyondrdev.com/admin (`/` redirects there). Overview (KPIs, AI summary, pipeline, by project, pages
 and assets with most feedback, activity), Inbox (filters: search, status, type, **project**, **asset**, priority,
-owner, sort), Board (drag between statuses), Themes & summary (Workers AI), People & access, CSV export.
+owner, sort), Board (drag between statuses), Themes & summary (Workers AI), Errors (browser errors from embedding
+pages, by project and page), People & access, CSV export.
 
 Roles live in the D1 `admins` table: `owner` or `admin`. Admins see and manage all feedback and add admins; only an
 owner can add owners, change an owner's role or remove an owner; nobody can remove themselves. Everyone else who
@@ -148,6 +169,10 @@ reported to Yondr Ops (`ops.overyondrdev.com`, repo `Overyondrdev/yondr-ops`) in
   subjective issues marked critical, goes to a person. Rules, flow and setup: the ops README, "Auto-fix".
 - `POST https://ops.overyondrdev.com/api/events` with type `feedback_critical` when an item is created as, or changed
   to, **critical** (any type), so the people subscribed in Ops are alerted.
+- `POST https://ops.overyondrdev.com/api/events` with type `client_errors` when a project's browser errors in the last
+  15 minutes cross a multiple of 10 (sent from the request that crosses it). Body, exactly:
+  `{ "type": "client_errors", "project", "count", "window_minutes": 15, "sample": [{ "message", "source", "page_path" }] }`
+  (at most 5 samples, the most recent; already redacted).
 
 Both send the shared secret `OPS_INGEST_TOKEN` (Worker secret, optional: without it nothing is sent) in `X-Ops-Token`.
 **No personal data is sent** (the owner accepted public auto-fix issues on that condition): no author, assignee, voter or
@@ -178,10 +203,13 @@ subjective, and can revert a fix.
 | `activity` | Audit trail (created, updated, commented, admin_added, …) |
 | `admins` | `email`, `role` (`owner` / `admin`) |
 | `summaries` | AI summaries (JSON) |
+| `client_errors` | Browser errors: `project`, `page_path`, `message`, `source`, `count`, `first_seen`, `last_seen` (one row per project + page + message + source; no user) |
+| `client_error_hits`, `client_error_limits` | Short-lived counters for the 15-minute Ops window and the hourly rate limit (keyed on a SHA-256 of the email); rows older than a day are pruned |
 
 `src/schema.js` applies the schema on the first request of each isolate. Changes must be **additive and idempotent**
 (new nullable columns via `ADDED_COLUMNS`, `CREATE … IF NOT EXISTS`); `migrations/` documents the same SQL.
-The 2026-11 upgrade added `project`, `asset`, `asset_label` and backfilled `project` from `site`.
+The 2026-11 upgrade added `project`, `asset`, `asset_label` and backfilled `project` from `site`; browser-error
+reporting added the three `client_error*` tables (`migrations/0003_client_errors.sql`).
 
 ## API
 
@@ -195,6 +223,8 @@ The 2026-11 upgrade added `project`, `asset`, `asset_label` and backfilled `proj
 | `GET/PATCH/DELETE feedback/:id` | author (limited) or admin | Detail / edit / withdraw or delete |
 | `POST feedback/:id/comments`, `POST feedback/:id/vote` | author or admin | Reply (`internal` for admins) / vote |
 | `GET attachments/:id` | author or admin | Screenshot image |
+| `POST client-errors` | anyone (60/hour) | `{ project, page_path, errors: [{ message, source, count, page_path? }] }` (≤ 20) → 202 `{ accepted, forwarded }` |
+| `GET client-errors?project=&days=` | admins | `{ items: [...], byProject: [{ project, n, distinct_errors, last_seen }] }` |
 | `GET stats`, `GET/POST summary`, `GET/POST/DELETE admins`, `GET export.csv` | admins | Dashboard data |
 
 ## Security

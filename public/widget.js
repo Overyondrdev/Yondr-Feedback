@@ -5,7 +5,8 @@
  *
  * Optional attributes: data-project (default: the host's first label; overyondrdev.com/www = "portal"),
  * data-asset + data-asset-label (a default item the feedback is about), data-toolbar="website" (the website preview
- * toolbar + tour), data-position="right" | "left" | "none" (where the launcher tab sits; "none" = no tab).
+ * toolbar + tour), data-position="right" | "left" | "none" (where the launcher tab sits; "none" = no tab),
+ * data-errors="off" (don't report this page's JavaScript errors; on by default, see "Browser errors" in the README).
  * JS API: window.YondrFeedback.open({ asset, assetLabel, type }), .close(), .setAsset(id, label), .setProject(name).
  * Any element with data-yfb-open (and optional data-yfb-asset / data-yfb-asset-label / data-yfb-type) opens it.
  *
@@ -36,14 +37,102 @@
       project: ID.test(p) ? p : fallback,
       toolbar: String(attr('data-toolbar') || '').trim().toLowerCase() === 'website' ? 'website' : null,
       position: pos === 'left' || pos === 'none' ? pos : 'right',
+      errors: String(attr('data-errors') || '').trim().toLowerCase() !== 'off',
       asset: asset ? { id: asset, label: text(attr('data-asset-label')) } : null,
     };
   }
   /* yfb-config:end */
 
+  /* yfb-errors:start (pure; tested by test/client-errors.test.js) */
+  // Browser-error reporting: what may leave the page. Only the error's message and the script URL (no query string or
+  // fragment) and line; email addresses removed; never anything a person typed. De-duplicated by message + source;
+  // at most `max` different errors per page view (repeats only add to the count).
+  function cleanErrText(v, max) {
+    // Capped first and linear-time patterns only (see src/client-errors.js), so odd error text can't stall the page.
+    var s = String(v == null ? '' : v).slice(0, 2000).replace(/[\u0000-\u001f\u007f]+/g, ' ');
+    if (s.indexOf('://') !== -1) s = s.replace(/(\b[a-z][a-z0-9+.-]{0,30}:\/\/[^\s?#'"<>]{0,2000})[?#][^\s'"<>]{0,2000}/gi, '$1');
+    if (s.indexOf('@') !== -1) s = s.replace(/[A-Za-z0-9._%+-]{1,64}@[A-Za-z0-9-]{1,63}(?:\.[A-Za-z0-9-]{1,63}){1,8}/g, '[email]');
+    return s.replace(/\s+/g, ' ').trim().slice(0, max || 300);
+  }
+  function cleanErrSource(url, line, col) {
+    var s = String(url || '');
+    if (!s) return '';
+    try { var u = new URL(s); s = u.protocol === 'http:' || u.protocol === 'https:' ? u.origin + u.pathname : u.protocol; } catch (e) { s = s.split(/[?#]/)[0]; }
+    s = cleanErrText(s, 300);
+    return line ? s + ':' + (line | 0) + (col ? ':' + (col | 0) : '') : s;
+  }
+  function errorCollector(max) {
+    var seen = {}, distinct = 0, pending = {}, order = [];
+    return {
+      // Returns true when queued. Errors from browser extensions are ignored.
+      add: function (message, url, line, col, path) {
+        if (/^(chrome|moz|safari|safari-web|ms-browser)-extension:/i.test(String(url || ''))) return false;
+        var msg = cleanErrText(message, 300) || 'Unknown error';
+        var src = cleanErrSource(url, line, col);
+        var key = msg + '\n' + src;
+        if (!seen[key]) {
+          if (distinct >= max) return false;
+          seen[key] = true; distinct++;
+        }
+        if (pending[key]) pending[key].count++;
+        else { pending[key] = { message: msg, source: src, page_path: cleanErrText(String(path || '/').split(/[?#]/)[0], 300) || '/', count: 1 }; order.push(key); }
+        return true;
+      },
+      // The queued reports (and empty the queue).
+      drain: function () { var out = order.map(function (k) { return pending[k]; }); pending = {}; order = []; return out; },
+      size: function () { return order.length; },
+    };
+  }
+  function rejectionText(reason) {
+    if (reason && typeof reason === 'object' && typeof reason.message === 'string') return 'Unhandled rejection: ' + (reason.name ? reason.name + ': ' : '') + reason.message;
+    if (typeof reason === 'string') return 'Unhandled rejection: ' + reason;
+    return 'Unhandled rejection (' + (reason === null ? 'null' : typeof reason) + ')';
+  }
+  function stackSource(stack) {
+    var m = /(https?:\/\/[^\s()]+?):(\d+):(\d+)/.exec(String(stack || ''));
+    return m ? { url: m[1], line: +m[2], col: +m[3] } : { url: '', line: 0, col: 0 };
+  }
+  /* yfb-errors:end */
+
   var me = document.currentScript || document.querySelector('script[src*="/widget.js"][data-project], script[src$="/widget.js"]');
   var CFG = readConfig(function (n) { return me ? me.getAttribute(n) : null; }, location.hostname, me && me.src);
   if (!document.body) document.addEventListener('DOMContentLoaded', boot); else boot();
+  if (CFG.errors) reportErrors();
+
+  // Sends this page's JavaScript errors to /api/client-errors every 30 s and when the page is hidden or left.
+  // fetch with keepalive (not sendBeacon): the request must carry the sign-in cookie and X-Yondr-Feedback.
+  function reportErrors() {
+    var MAX = 20, collector = errorCollector(MAX), timer = null, stopped = false;
+    function flush() {
+      if (timer) { clearTimeout(timer); timer = null; }
+      if (stopped || !collector.size()) return;
+      var batch = collector.drain();
+      try {
+        fetch(CFG.api + 'client-errors', {
+          method: 'POST', credentials: 'include', mode: 'cors', keepalive: true,
+          headers: { 'content-type': 'application/json', 'x-yondr-feedback': '1' },
+          body: JSON.stringify({ project: CFG.project, page_path: batch[0].page_path, errors: batch }),
+        }).then(function (r) { if (r.status === 401 || r.status === 403 || r.status === 429) stopped = true; }, function () { /* offline */ });
+      } catch (e) { /* never let reporting break the page */ }
+    }
+    function queue(message, url, line, col) {
+      try {
+        if (stopped || !collector.add(message, url, line, col, location.pathname)) return;
+        if (!timer) timer = setTimeout(flush, 30000);
+      } catch (e) { /* ignore */ }
+    }
+    window.addEventListener('error', function (e) {
+      if (!e || typeof e.message !== 'string') return; // resource load errors don't reach window listeners anyway
+      queue(e.message, e.filename, e.lineno, e.colno);
+    });
+    window.addEventListener('unhandledrejection', function (e) {
+      var r = e && e.reason;
+      var at = stackSource(r && r.stack);
+      queue(rejectionText(r), at.url, at.line, at.col);
+    });
+    window.addEventListener('pagehide', flush);
+    document.addEventListener('visibilitychange', function () { if (document.visibilityState === 'hidden') flush(); });
+  }
 
   function boot() {
   var BASE = CFG.base;

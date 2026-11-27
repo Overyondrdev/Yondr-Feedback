@@ -73,6 +73,34 @@ export const SCHEMA = [
     item_count INTEGER NOT NULL,
     content TEXT NOT NULL
   )`,
+  // Browser errors from pages that embed the widget (src/client-errors.js). One row per project + page + message +
+  // source; `count` adds up repeats. No user, no query strings, no email addresses.
+  `CREATE TABLE IF NOT EXISTS client_errors (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    project TEXT NOT NULL,
+    page_path TEXT NOT NULL,
+    message TEXT NOT NULL,
+    source TEXT NOT NULL DEFAULT '',     -- script URL without query string, plus :line:column
+    count INTEGER NOT NULL DEFAULT 0,
+    first_seen TEXT NOT NULL,
+    last_seen TEXT NOT NULL
+  )`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS client_errors_key ON client_errors(project, page_path, message, source)`,
+  `CREATE INDEX IF NOT EXISTS client_errors_recent ON client_errors(last_seen)`,
+  // Short-lived counters (pruned after a day): reports per project for the 15-minute Ops window, and requests per
+  // person per hour for the rate limit (user_key = SHA-256 of the email, not the email).
+  `CREATE TABLE IF NOT EXISTS client_error_hits (
+    project TEXT NOT NULL,
+    at TEXT NOT NULL,
+    n INTEGER NOT NULL
+  )`,
+  `CREATE INDEX IF NOT EXISTS client_error_hits_project ON client_error_hits(project, at)`,
+  `CREATE TABLE IF NOT EXISTS client_error_limits (
+    user_key TEXT NOT NULL,
+    hour TEXT NOT NULL,
+    n INTEGER NOT NULL,
+    PRIMARY KEY (user_key, hour)
+  )`,
 ];
 
 // Columns added after the first release (2026-11, universal feedback tool). SQLite has no ADD COLUMN IF NOT EXISTS,

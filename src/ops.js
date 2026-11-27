@@ -2,7 +2,9 @@
 //   POST /api/autofix/feedback  every new item, and every admin change of type or priority. Ops triages it for the
 //                               auto-fix engine (only objective bugs can be fixed automatically; the rules are in
 //                               the ops README "Auto-fix"). Ops decides; this side only reports.
-//   POST /api/events            `feedback_critical` when an item is created as, or changed to, critical (any type).
+//   POST /api/events            `feedback_critical` when an item is created as, or changed to, critical (any type);
+//                               `client_errors` when a project's browser errors in the last 15 minutes cross a
+//                               multiple of 10 (src/client-errors.js).
 // Authenticated with the shared secret OPS_INGEST_TOKEN (Worker secret, optional): without it nothing is sent.
 // Sent with ctx.waitUntil, so the person giving feedback never waits for ops, and an ops outage never fails a request.
 // PRIVACY: no personal data leaves this Worker (bug reports may become PUBLIC GitHub issues). No author, assignee, voter
@@ -121,6 +123,32 @@ export function notifyOps(env, ctx, prev, next, attachments = []) {
   const p = Promise.allSettled(jobs).then((rs) => {
     for (const r of rs) if (r.status === 'rejected') console.error('ops notify failed', next.id, r.reason && r.reason.message);
   });
+  if (ctx && typeof ctx.waitUntil === 'function') ctx.waitUntil(p);
+  return p;
+}
+
+/**
+ * The client_errors event for ops: a project's browser errors in the last `windowMinutes`, with up to 5 samples
+ * ({ message, source, page_path }, redacted again here). Pure. The body is a contract with yondr-ops; keep it exact.
+ */
+export function clientErrorsEvent(project, count, samples = [], windowMinutes = 15) {
+  return {
+    type: 'client_errors',
+    project,
+    count,
+    window_minutes: windowMinutes,
+    sample: samples.slice(0, 5).map((e) => ({
+      message: redact(clip(e.message, 300)),
+      source: redact(clip(e.source, 300)),
+      page_path: redact(clip(e.page_path, 300)),
+    })),
+  };
+}
+
+/** Send a client_errors event in the background. Never throws; does nothing without OPS_INGEST_TOKEN. */
+export function forwardClientErrors(env, ctx, event) {
+  if (!env.OPS_INGEST_TOKEN) return null;
+  const p = post(env, '/api/events', event).catch((e) => console.error('ops client_errors failed', event.project, e && e.message));
   if (ctx && typeof ctx.waitUntil === 'function') ctx.waitUntil(p);
   return p;
 }
