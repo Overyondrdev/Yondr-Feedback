@@ -2,6 +2,7 @@
 (function () {
   'use strict';
   var API = '/api/';
+  var OPS = 'https://ops.overyondrdev.com'; // Yondr Ops: auto-fix status per item
   var app = document.getElementById('app');
   var TYPES = { bug: 'Bug', design: 'Design', content: 'Copy', idea: 'Idea', question: 'Question', praise: 'Love it', other: 'Other' };
   var STATUS = { new: 'New', reviewing: 'In review', agreed: 'Agreed', planned: 'Planned', done: 'Done', wont_do: 'Won’t do' };
@@ -569,6 +570,10 @@
     if (c.pinned) row('Pointed at', h('span', {}, [h('code', { text: c.pinned.selector }), c.pinned.text ? h('div', { style: 'color:var(--muted)', text: '“' + c.pinned.text + '”' }) : null]));
     if (c.viewport) row('Screen', c.viewport.w + ' × ' + c.viewport.h + (c.viewport.dpr > 1 ? ' @' + c.viewport.dpr + 'x' : '') + (c.scroll ? ' · scrolled ' + c.scroll.y + 'px' : ''));
     if (c.userAgent) row('Browser', browser(c.userAgent));
+    // Auto-fix: Yondr Ops triages every item (only objective bugs can be fixed automatically). Status, timeline,
+    // "Mark objective / subjective" and Revert live in Ops.
+    row('Auto-fix', h('span', {}, [h('a', { href: OPS + '/#autofix/feedback/' + i.id, target: '_blank', rel: 'noopener', html: 'Auto-fix status in Ops ' + ICONS.ext }),
+      h('div', { style: 'color:var(--muted)', text: i.type === 'bug' ? 'Bugs that are objective (verifiable) can be fixed automatically; everything else goes to a person.' : 'Only bugs can be fixed automatically.' })]));
     body.appendChild(ctx);
 
     // Discussion

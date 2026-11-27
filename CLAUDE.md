@@ -13,6 +13,7 @@ CORS, hosts or deploys.
 | `src/http.js` | CORS origin rule and CSRF rule (the API's cross-origin contract) |
 | `src/api.js` | The API (`/api/*`), incl. the admin-role rules (`adminChangeProblem`) |
 | `src/schema.js` | D1 schema, applied automatically; additive changes only (`ADDED_COLUMNS`) |
+| `src/ops.js` | Reports new/changed items to Yondr Ops (auto-fix triage, `feedback_critical`); no personal data |
 | `src/auth.js` | Who is signed in (Yondr session; `DEV_EMAIL` locally) and their admin role |
 | `src/yondr-session.js` | **Unchanged copy** of `overyondr-website-v1/auth/src/session.js` (CI compares) |
 | `public/widget.js` | The embeddable widget (Shadow DOM, no dependencies); config parsing between `yfb-config` markers |

@@ -130,6 +130,32 @@ Roles live in the D1 `admins` table: `owner` or `admin`. Admins see and manage a
 owner can add owners, change an owner's role or remove an owner; nobody can remove themselves. Everyone else who
 signs in sees an "Admins only" page (the widget works for every `@overyondr.com` person).
 
+## Yondr Ops: auto-fix and critical alerts
+
+Every new item, and every change of **type** or **priority** (by an admin, or by the author while it is new), is
+reported to Yondr Ops (`ops.overyondrdev.com`, repo `Overyondrdev/yondr-ops`) in the background (`src/ops.js`,
+`ctx.waitUntil`: nobody waits for it and an ops outage never fails a request):
+
+- `POST https://ops.overyondrdev.com/api/autofix/feedback`: ops **triages** the item for the auto-fix engine. Only
+  **bugs** that are **objective** (verifiable: errors, broken links, a form that fails, broken layout at 375 px, text
+  differing from its source, sign-in failures, missing images) can be fixed automatically; everything else, including
+  subjective issues marked critical, goes to a person. Rules, flow and setup: the ops README, "Auto-fix".
+- `POST https://ops.overyondrdev.com/api/events` with type `feedback_critical` when an item is created as, or changed
+  to, **critical** (any type), so the people subscribed in Ops are alerted.
+
+Both send the shared secret `OPS_INGEST_TOKEN` (Worker secret, optional: without it nothing is sent) in `X-Ops-Token`.
+**No personal data is sent**: no author, assignee, voter or commenter; e-mail addresses and phone numbers in the text
+are redacted; screenshots are only referenced by their path here (`/api/attachments/<id>`, which needs a Yondr
+sign-in). Sent fields: `feedback_id`, `reason` (`created`/`updated`), `project`, `asset`, `type`, `priority`,
+`status`, `title`, `message`, `url`, `path`, `page_title`, `screenshots`, `admin_url`, `created_at`.
+
+Careful: the text of an item that ops sends to the auto-fix engine ends up in a GitHub issue in a **public**
+repository. Tell people not to put confidential information in bug reports.
+
+In the admin, each item's details have an **Auto-fix** row linking to its status in Ops
+(`https://ops.overyondrdev.com/#autofix/feedback/<id>`), where admins see the timeline, can mark it objective or
+subjective, and can revert a fix.
+
 ## Data model (D1 `yondr-feedback`)
 
 | Table | What |
@@ -205,7 +231,9 @@ database.
 `npm run deploy` (needs Cloudflare credentials for the account). It works from Claude cloud sessions too, because the
 Worker has no static assets to upload (they're bundled into the script). Bundle: about 340 KiB (160 KiB gzipped); the
 free plan allows 3 MB. `wrangler deploy` replaces dashboard plain-text variables with `wrangler.jsonc`'s: keep every
-variable there. No secrets are needed. Never set `DEV_EMAIL` on the deployed Worker.
+variable there. One optional secret: `OPS_INGEST_TOKEN` (the same value as on `yondr-ops`;
+`npx wrangler secret put OPS_INGEST_TOKEN`), which turns on the reports to Yondr Ops above. Never set `DEV_EMAIL` on
+the deployed Worker.
 
 First deploy (owner approval needed: new Worker and host):
 1. `npm run deploy` creates `yondr-feedback` and the `feedback.overyondrdev.com` custom domain.

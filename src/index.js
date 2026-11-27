@@ -60,12 +60,12 @@ function jsonError(status, error, extra = {}) {
   });
 }
 
-async function api(request, env, url, user) {
+async function api(request, env, url, user, ctx) {
   const cors = corsHeaders(request, env);
   const problem = csrfProblem(request, env);
   if (problem) return jsonError(403, problem, cors);
   try {
-    const res = await handleApi(request, env, url.pathname.slice('/api/'.length), user);
+    const res = await handleApi(request, env, url.pathname.slice('/api/'.length), user, ctx);
     return withHeaders(res, { ...COMMON, ...cors });
   } catch (e) {
     console.error('api error', request.method, url.pathname, e && e.stack);
@@ -74,7 +74,7 @@ async function api(request, env, url, user) {
 }
 
 export default {
-  async fetch(request, env) {
+  async fetch(request, env, ctx) {
     const url = new URL(request.url);
     const path = url.pathname;
     const isApi = path.startsWith('/api/');
@@ -89,7 +89,7 @@ export default {
       return jsonError(401, 'Please sign in with your Yondr Google account.', isApi ? corsHeaders(request, env) : {});
     }
 
-    if (isApi) return api(request, env, url, user);
+    if (isApi) return api(request, env, url, user, ctx);
     if (request.method !== 'GET' && request.method !== 'HEAD') return jsonError(405, 'Method not allowed');
     if (path === '/' || path === '/admin/' || path === '/index.html') return Response.redirect(new URL('/admin', url).toString(), 302);
     if (path === '/admin') return serveFile(request, '/admin.html');
