@@ -48,9 +48,10 @@
   // fragment) and line; email addresses removed; never anything a person typed. De-duplicated by message + source;
   // at most `max` different errors per page view (repeats only add to the count).
   function cleanErrText(v, max) {
-    var s = String(v == null ? '' : v).replace(/[\u0000-\u001f\u007f]+/g, ' ');
-    s = s.replace(/(\b[a-z][a-z0-9+.-]*:\/\/[^\s?#'"<>]*)[?#][^\s'"<>]*/gi, '$1');
-    s = s.replace(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g, '[email]');
+    // Capped first and linear-time patterns only (see src/client-errors.js), so odd error text can't stall the page.
+    var s = String(v == null ? '' : v).slice(0, 2000).replace(/[\u0000-\u001f\u007f]+/g, ' ');
+    if (s.indexOf('://') !== -1) s = s.replace(/(\b[a-z][a-z0-9+.-]{0,30}:\/\/[^\s?#'"<>]{0,2000})[?#][^\s'"<>]{0,2000}/gi, '$1');
+    if (s.indexOf('@') !== -1) s = s.replace(/[A-Za-z0-9._%+-]{1,64}@[A-Za-z0-9-]{1,63}(?:\.[A-Za-z0-9-]{1,63}){1,8}/g, '[email]');
     return s.replace(/\s+/g, ' ').trim().slice(0, max || 300);
   }
   function cleanErrSource(url, line, col) {

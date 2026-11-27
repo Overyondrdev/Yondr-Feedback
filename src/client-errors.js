@@ -16,18 +16,20 @@ export const RATE_LIMIT_PER_HOUR = 60;
 export const WINDOW_MINUTES = 15;
 export const FORWARD_STEP = 10;
 
-const EMAIL = /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g;
+// Linear-time patterns only (no overlapping repeats), and every input is capped to MAX_SCAN characters first, so a
+// crafted error message can't make the Worker spend long matching (ReDoS). The domain part has no '.' inside its
+// repeated label, so it can't backtrack. Each pattern runs only if the text can contain a match.
+const MAX_SCAN = 2000;
+const EMAIL = /[A-Za-z0-9._%+-]{1,64}@[A-Za-z0-9-]{1,63}(?:\.[A-Za-z0-9-]{1,63}){1,8}/g;
 // A URL's query string and fragment: everything from ? or # up to whitespace or a quote.
-const URL_QUERY = /(\b[a-z][a-z0-9+.-]*:\/\/[^\s?#'"<>]*)[?#][^\s'"<>]*/gi;
+const URL_QUERY = /(\b[a-z][a-z0-9+.-]{0,30}:\/\/[^\s?#'"<>]{0,2000})[?#][^\s'"<>]{0,2000}/gi;
 
 /** Error text as it may be stored: no control characters, URL query strings, email addresses or secrets. Pure. */
 export function cleanErrorText(v, max = 500) {
-  const s = String(v ?? '')
-    .replace(/[\u0000-\u001f\u007f]+/g, ' ')
-    .replace(URL_QUERY, '$1')
-    .replace(EMAIL, '[email]')
-    .replace(/\s+/g, ' ')
-    .trim();
+  let s = String(v ?? '').slice(0, MAX_SCAN).replace(/[\u0000-\u001f\u007f]+/g, ' ');
+  if (s.includes('://')) s = s.replace(URL_QUERY, '$1');
+  if (s.includes('@')) s = s.replace(EMAIL, '[email]');
+  s = s.replace(/\s+/g, ' ').trim();
   return redact(s).slice(0, max);
 }
 
