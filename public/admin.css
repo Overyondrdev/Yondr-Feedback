@@ -247,3 +247,14 @@ textarea.input { width: 100%; resize: vertical; min-height: 84px; }
 /* Universal feedback tool: asset pill and inline link buttons (feedback.overyondrdev.com). */
 .pill.asset { background: var(--ow); color: var(--g); border: 1px solid var(--line); max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .linkbtn { border: 0; background: none; padding: 0; color: var(--g); font-weight: 600; text-decoration: underline; text-underline-offset: 2px; }
+
+/* Errors tab */
+.errrow { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 12px; font-size: 13px; }
+.errrow .meta { color: var(--muted); }
+.tablewrap { overflow-x: auto; max-width: 100%; }
+.tablewrap:focus-visible { outline: 3px solid var(--l); outline-offset: 2px; }
+.errtable { width: 100%; border-collapse: collapse; font-size: 13px; }
+.errtable th, .errtable td { text-align: left; vertical-align: top; padding: 8px 10px; border-bottom: 1px solid var(--line); }
+.errtable th { font-size: 11.5px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); white-space: nowrap; }
+.errtable td { overflow-wrap: anywhere; min-width: 90px; }
+.errtable .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
