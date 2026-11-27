@@ -4,6 +4,7 @@
 // The caller (index.js) has already checked the Yondr sign-in and passes the user in.
 import { ensureSchema } from './schema.js';
 import { roleOf } from './auth.js';
+import { notifyOps } from './ops.js';
 
 const TYPES = ['bug', 'design', 'content', 'idea', 'question', 'praise', 'other'];
 const PRIORITIES = ['low', 'normal', 'high', 'critical'];
@@ -56,7 +57,7 @@ async function canSee(db, user, isAdmin, id) {
 }
 
 // ---------------------------------------------------------------- handlers
-async function createFeedback(req, env, user) {
+async function createFeedback(req, env, user, ctx) {
   const b = await req.json().catch(() => null);
   if (!b || !clip(b.message, 10000).trim()) return err(400, 'Please describe your feedback.');
   const type = TYPES.includes(b.type) ? b.type : 'other';
@@ -85,6 +86,12 @@ async function createFeedback(req, env, user) {
   }
   if (n) await env.DB.prepare('UPDATE feedback SET attachment_count = ? WHERE id = ?').bind(n, id).run();
   await log(env.DB, id, user.email, 'created', { type, priority, screenshots: n, project, ...(asset ? { asset } : {}) });
+  // Yondr Ops: auto-fix triage (+ an alert if critical). In the background; no personal data (src/ops.js).
+  if (env.OPS_INGEST_TOKEN) {
+    const created = await env.DB.prepare('SELECT * FROM feedback WHERE id = ?').bind(id).first();
+    const { results: att } = await env.DB.prepare('SELECT id FROM attachments WHERE feedback_id = ? ORDER BY created_at').bind(id).all();
+    notifyOps(env, ctx, null, created, att);
+  }
   return json({ id, project, asset }, 201);
 }
 
@@ -141,7 +148,7 @@ async function getFeedback(id, env, user, isAdmin) {
   });
 }
 
-async function updateFeedback(id, req, env, user, isAdmin) {
+async function updateFeedback(id, req, env, user, isAdmin, ctx) {
   const fb = await canSee(env.DB, user, isAdmin, id);
   if (!fb) return err(404, 'Not found');
   const b = await req.json().catch(() => ({}));
@@ -165,6 +172,12 @@ async function updateFeedback(id, req, env, user, isAdmin) {
   if (!sets.length) return err(400, 'Nothing to change');
   await env.DB.prepare(`UPDATE feedback SET ${sets.join(', ')}, updated_at = ? WHERE id = ?`).bind(...args, now(), id).run();
   await log(env.DB, id, user.email, 'updated', changes);
+  // A new type or priority can change what ops does with it (e.g. reclassified as a bug, or now critical).
+  if (env.OPS_INGEST_TOKEN && ('type' in changes || 'priority' in changes)) {
+    const next = await env.DB.prepare('SELECT * FROM feedback WHERE id = ?').bind(id).first();
+    const { results: att } = await env.DB.prepare('SELECT id FROM attachments WHERE feedback_id = ? ORDER BY created_at').bind(id).all();
+    notifyOps(env, ctx, fb, next, att);
+  }
   return getFeedback(id, env, user, isAdmin);
 }
 
@@ -335,7 +348,7 @@ async function exportCsv(env) {
 }
 
 // ------------------------------------------------------------ router
-export async function handleApi(request, env, path, user) {
+export async function handleApi(request, env, path, user, ctx) {
   if (!env.DB || !env.SHOTS) return err(503, 'Feedback storage is not configured.');
   await ensureSchema(env.DB);
   const role = await roleOf(env.DB, user.email);
@@ -348,14 +361,14 @@ export async function handleApi(request, env, path, user) {
   if (seg[0] === 'me') return json({ email: user.email, name: user.name || null, role, isAdmin });
   if (seg[0] === 'feedback' && seg.length === 1) {
     if (m === 'GET') return listFeedback(url, env, user, isAdmin);
-    if (m === 'POST') return createFeedback(request, env, user);
+    if (m === 'POST') return createFeedback(request, env, user, ctx);
   }
   if (seg[0] === 'feedback' && seg[1]) {
     const id = parseInt(seg[1], 10);
     if (!id) return err(404, 'Not found');
     if (seg.length === 2) {
       if (m === 'GET') return getFeedback(id, env, user, isAdmin);
-      if (m === 'PATCH') return updateFeedback(id, request, env, user, isAdmin);
+      if (m === 'PATCH') return updateFeedback(id, request, env, user, isAdmin, ctx);
       if (m === 'DELETE') return deleteFeedback(id, env, user, isAdmin);
     }
     if (seg[2] === 'comments' && m === 'POST') return addComment(id, request, env, user, isAdmin);
