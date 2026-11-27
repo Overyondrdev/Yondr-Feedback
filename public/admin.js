@@ -188,9 +188,15 @@
     var y = window.scrollY;
     keepFocus(mainEl, function () {
       mainEl.innerHTML = '';
-      // Only known views: S.view comes from the URL hash, so never look it up on a plain object (e.g. "#constructor").
-      var views = { overview: overview, inbox: inbox, board: board, themes: themes, errors: errors, people: people };
-      (Object.prototype.hasOwnProperty.call(views, S.view) ? views[S.view] : overview)();
+      // Only known views: S.view comes from the URL hash, so it is matched against fixed names, never used as a key.
+      switch (S.view) {
+        case 'inbox': inbox(); break;
+        case 'board': board(); break;
+        case 'themes': themes(); break;
+        case 'errors': errors(); break;
+        case 'people': people(); break;
+        default: overview();
+      }
     });
     if (soft) window.scrollTo(0, y);
   }
