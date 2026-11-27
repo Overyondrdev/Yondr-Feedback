@@ -1,9 +1,10 @@
-// Repository checks (run in CI and before deploy): syntax, Wrangler safety rules, no personal email addresses,
+// Repository checks (run in CI and before deploy): syntax, Wrangler safety rules, no personal email addresses, no secrets,
 // nothing loaded from Squarespace. Exits non-zero with a list of problems.
 import { execFileSync } from 'node:child_process';
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { scanRepo } from './secret-scan.mjs';
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
 const problems = [];
@@ -46,6 +47,9 @@ for (const f of files.filter((f) => /\.(m?js|json|jsonc|md|html|css|sql|yml|yaml
   }
   if (SQUARESPACE.test(text) && f !== 'scripts/check.mjs') problems.push(`${f}: references a Squarespace host`);
 }
+
+// 5. Secrets in tracked files (API keys, tokens, webhook URLs, private keys): scripts/secret-scan.mjs, also run alone.
+problems.push(...scanRepo(ROOT).problems);
 
 if (problems.length) {
   console.error(problems.map((p) => '✗ ' + p).join('\n'));
