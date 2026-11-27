@@ -1,0 +1,22 @@
+{
+  "name": "yondr-feedback",
+  "version": "1.0.0",
+  "description": "Yondr feedback tool: one script tag adds documented, individual feedback to any *.overyondrdev.com site or tool",
+  "private": true,
+  "license": "UNLICENSED",
+  "type": "module",
+  "engines": {
+    "node": ">=22.12"
+  },
+  "scripts": {
+    "build": "node scripts/build-static.mjs",
+    "check": "npm run build && node scripts/check.mjs",
+    "test": "npm run build && node --test --no-warnings \"test/*.test.js\"",
+    "dev": "wrangler dev --local",
+    "deploy:dry": "wrangler deploy --dry-run --outdir .wrangler/dry-run",
+    "deploy": "npm run check && npm test && wrangler deploy"
+  },
+  "devDependencies": {
+    "wrangler": "^4.166.0"
+  }
+}

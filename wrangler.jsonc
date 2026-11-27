@@ -1,0 +1,32 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "yondr-feedback",
+  "main": "src/index.js",
+  "compatibility_date": "2026-11-20",
+  // Bundles public/ into src/static.generated.js before every `wrangler dev` / `wrangler deploy`.
+  // No Workers static assets: `wrangler deploy` from Claude cloud sessions can't upload them (docs: README "Deploy").
+  "build": { "command": "node scripts/build-static.mjs", "watch_dir": "public" },
+  "observability": { "enabled": true },
+  // The SAME data the website Worker (overyondr-website-v1) used: no copy, no migration.
+  // Schema upgrades are additive and applied automatically by src/schema.js.
+  "d1_databases": [
+    { "binding": "DB", "database_name": "yondr-feedback", "database_id": "d1284d94-c7e8-4b9e-9526-b108c8425d87" }
+  ],
+  // KV namespace yondr-feedback-screenshots
+  "kv_namespaces": [
+    { "binding": "SHOTS", "id": "de8a09b9bbdf43a59e761a7f57c6a85b" }
+  ],
+  // Workers AI for the admin's "Themes & summary".
+  "ai": { "binding": "AI" },
+  "vars": {
+    // Yondr Google sign-in (auth.overyondrdev.com): public key of the shared session cookie. Safe to commit.
+    "YONDR_AUTH_PUBLIC_JWK": "{\"kty\":\"EC\",\"crv\":\"P-256\",\"x\":\"BpCjLJMykOsJbtPTm63rdbw2BzRUTNTz3jj9LWqK6AM\",\"y\":\"RyW0y7Dki1BQ6GnYdD-4FPovGYfoaMmDgr21lNU7xXQ\",\"kid\":\"yondr-2026-11-26-a3a7e6\"}",
+    "ALLOWED_EMAIL_DOMAINS": "overyondr.com"
+  },
+  // Platform rule: no public *.workers.dev or preview URLs; the tool lives only on its custom domain.
+  "workers_dev": false,
+  "preview_urls": false,
+  "routes": [
+    { "pattern": "feedback.overyondrdev.com", "custom_domain": true }
+  ]
+}
