@@ -91,6 +91,9 @@ test('signed in: / goes to /admin, which is the dashboard page with a strict CSP
   const html = await admin.res.text();
   assert.match(html, /\/admin\.js\?v=[0-9a-f]{16}/);
   assert.match(admin.res.headers.get('content-security-policy'), /frame-ancestors 'none'/);
+  // The shared people picker (auth.overyondrdev.com) may load and look people up; nothing else.
+  assert.match(admin.res.headers.get('content-security-policy'), /script-src 'self' https:\/\/auth\.overyondrdev\.com;/);
+  assert.match(admin.res.headers.get('content-security-policy'), /connect-src 'self' https:\/\/auth\.overyondrdev\.com;/);
 });
 
 test('create feedback about an asset from another site, list it by project and asset', async () => {

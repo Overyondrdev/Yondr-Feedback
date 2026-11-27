@@ -165,7 +165,8 @@ textarea.input { width: 100%; resize: vertical; min-height: 84px; }
 .drawer .db { flex: 1; overflow: auto; padding: 20px 22px 40px; }
 .controls { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-bottom: 18px; }
 .controls label { display: grid; gap: 4px; font-size: 11px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
-.controls select { text-transform: none; letter-spacing: 0; font-weight: 600; color: var(--g); }
+.controls select, .controls input { text-transform: none; letter-spacing: 0; font-weight: 600; color: var(--g); }
+.toolbar .person-input { flex: 0 1 200px; min-width: 0; }
 .message { font-size: 16px; white-space: pre-wrap; overflow-wrap: anywhere; background: var(--card); border: 1px solid var(--line); border-radius: var(--r); padding: 16px 18px; margin-bottom: 14px; }
 .message .by { font-size: 12.5px; color: var(--muted); margin-bottom: 8px; display: flex; gap: 8px; align-items: center; }
 .shots { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 10px; margin-bottom: 14px; }
@@ -215,6 +216,8 @@ textarea.input { width: 100%; resize: vertical; min-height: 84px; }
 .people { display: grid; gap: 8px; }
 .person { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 10px 14px; }
 .person .e { flex: 1 1 160px; min-width: 0; overflow-wrap: anywhere; }
+.person .e .pn { display: block; } .person .e .pn:empty { display: none; }
+.person .e .ps { display: block; color: var(--muted); font-size: 13px; }
 /* When a row wraps at narrow widths, the role and its action stay on the right. */
 .person .role, .person .e + .btn { margin-left: auto; }
 .person .role { font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; padding: 2px 8px; border-radius: 999px; background: var(--ow); color: var(--g); }

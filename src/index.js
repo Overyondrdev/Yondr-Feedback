@@ -17,8 +17,10 @@ const COMMON = {
   'x-robots-tag': 'noindex, nofollow',
   'referrer-policy': 'strict-origin-when-cross-origin',
 };
-const ADMIN_CSP = "default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; " +
-  "font-src 'self'; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'";
+// auth.overyondrdev.com: the shared Yondr people picker (people-picker.js and its /api/people directory lookup).
+const PEOPLE = 'https://auth.overyondrdev.com';
+const ADMIN_CSP = `default-src 'none'; script-src 'self' ${PEOPLE}; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; ` +
+  `font-src 'self'; connect-src 'self' ${PEOPLE}; base-uri 'none'; form-action 'self'; frame-ancestors 'none'`;
 
 /** Cache policy per bundled file. */
 export function cacheControl(path) {

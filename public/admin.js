@@ -53,6 +53,57 @@
   }
   function name(email) { return (email || '').split('@')[0].replace(/[._-]+/g, ' ').replace(/\b\w/g, function (c) { return c.toUpperCase(); }); }
   function avatar(email) { var n = name(email).split(' '); return h('span', { class: 'avatar', title: email, text: (n[0] || '?')[0] + (n[1] ? n[1][0] : '') }); }
+  // Person fields use the shared Yondr people picker (auth.overyondrdev.com/people-picker.js, loaded by admin.html;
+  // overyondr-website-v1 docs/PLATFORM.md §8): type a letter or two, pick from at most 6 people. Without it (signed
+  // out of the directory, offline) the field still works as a plain email input.
+  var EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  // While the picker is highlighting someone, Enter picks that person instead of submitting.
+  function pickerOpen(input) { return input.getAttribute('aria-expanded') === 'true' && !!input.getAttribute('aria-activedescendant'); }
+  // A person field that commits on pick, on a typed full email, or on clearing it (onCommit(null)).
+  function personInput(attrs, value, onCommit) {
+    var input = h('input', Object.assign({ class: 'input person-input', type: 'email', 'data-people': true, autocomplete: 'off', spellcheck: 'false', value: value || '' }, attrs));
+    var last = (value || '').toLowerCase();
+    function commit() {
+      var v = input.value.trim().toLowerCase();
+      if (v === last) return;
+      if (v && !EMAIL_RE.test(v)) return;            // half-typed: wait for a pick or a full address
+      last = v; onCommit(v || null);
+    }
+    input.addEventListener('change', commit);
+    input.addEventListener('blur', function () { if (input.value.trim() && !EMAIL_RE.test(input.value.trim())) input.value = last; });
+    input.addEventListener('keydown', function (e) { if (e.key === 'Enter' && !pickerOpen(input)) { e.preventDefault(); commit(); } });
+    return input;
+  }
+  // Real names and titles from the Yondr directory (auth.overyondrdev.com), for People & access. One lookup per render
+  // for addresses not seen yet; unknown people and a failed call keep the label made from the email.
+  var PEOPLE_LOOKUP = 'https://auth.overyondrdev.com/api/people/lookup?emails=';
+  var DIR = {};
+  function lookupPeople(emails) {
+    var want = emails.filter(function (e, k) { return e && !(e in DIR) && emails.indexOf(e) === k; }).slice(0, 100);
+    if (!want.length) return Promise.resolve(DIR);
+    return fetch(PEOPLE_LOOKUP + encodeURIComponent(want.join(',')), { credentials: 'include', headers: { accept: 'application/json' } })
+      .then(function (r) { if (!r.ok) throw new Error('lookup ' + r.status); return r.json(); })
+      .then(function (d) {
+        want.forEach(function (e) { DIR[e] = null; });
+        ((d && d.people) || []).forEach(function (p) { if (p && p.email && p.name) DIR[String(p.email).toLowerCase()] = { name: p.name, title: p.title || '' }; });
+        return DIR;
+      })
+      .catch(function () { return DIR; }); // not cached: the next render tries again
+  }
+  // Fill in directory names on rows rendered with data-email (an avatar, .pn name and .ps secondary text).
+  function applyDirectory(root) {
+    lookupPeople(Array.prototype.map.call(root.querySelectorAll('[data-email]'), function (r) { return r.getAttribute('data-email'); })).then(function () {
+      if (!root.isConnected) return;
+      root.querySelectorAll('[data-email]').forEach(function (row) {
+        var email = row.getAttribute('data-email'), p = DIR[email];
+        if (!p) return;
+        var parts = p.name.split(/\s+/).filter(Boolean);
+        var av = row.querySelector('.avatar'); if (av) av.textContent = ((parts[0] || '?')[0] + (parts.length > 1 ? parts[parts.length - 1][0] : '')).toUpperCase();
+        var pn = row.querySelector('.pn'); if (pn) pn.textContent = p.name;
+        var ps = row.querySelector('.ps'); if (ps) ps.textContent = p.title ? p.title + ' · ' + email : email;
+      });
+    });
+  }
   function statusPill(s) { return h('span', { class: 'pill s-' + s, text: STATUS[s] || s }); }
   function prioDot(p) { return h('span', { class: 'prio p-' + p, title: PRIORITY[p] + ' priority' }); }
   var MOD = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent) ? '⌘' : 'Ctrl';
@@ -325,7 +376,9 @@
       return s;
     }
     var statusSel = sel('status', 'Any status', Object.assign({ 'new,reviewing,agreed,planned': 'Open (all)' }, STATUS));
-    var assignees = {}; S.admins.forEach(function (a) { assignees[a.email] = name(a.email); });
+    var owner = personInput({ 'aria-label': 'Filter by owner', placeholder: 'Owner: anyone', title: 'Type a name to show one person’s items; clear to show everyone’s' }, f.assignee, function (v) {
+      f.assignee = v || ''; loadItems().then(function () { renderMain(true); });
+    });
     var search = h('input', { class: 'input search', type: 'search', placeholder: 'Search feedback, pages, assets, people…', value: f.q });
     var known = Object.keys((S.stats && (S.stats.byProject || S.stats.bySite)) || {});
     if (f.project && known.indexOf(f.project) < 0) known.push(f.project);
@@ -334,7 +387,7 @@
     if (f.asset && !assets[f.asset]) assets[f.asset] = f.asset;
     var t; search.addEventListener('input', function () { clearTimeout(t); t = setTimeout(function () { f.q = search.value.trim(); loadItems().then(function () { renderMain(true); var s2 = mainEl.querySelector('.search'); if (s2) { s2.focus(); s2.setSelectionRange(s2.value.length, s2.value.length); } }); }, 250); });
     return h('div', { class: 'toolbar' }, [search, statusSel, sel('type', 'Any type', TYPES), sel('project', 'All projects', projectLabels(known)), sel('asset', 'Any asset', assets), sel('priority', 'Any priority', PRIORITY),
-      sel('assignee', 'Anyone', assignees),
+      owner,
       sel('sort', 'Sort', { new: 'Newest', updated: 'Recently active', votes: 'Most agreed', discussed: 'Most discussed', priority: 'Priority', old: 'Oldest' })]);
   }
   function inbox() {
@@ -472,26 +525,27 @@
     var list = h('div', { class: 'people' });
     S.admins.forEach(function (a) {
       var canRemove = a.email !== S.me.email && (a.role !== 'owner' || isOwner);
-      list.appendChild(h('div', { class: 'person' }, [avatar(a.email), h('span', { class: 'e' }, [h('b', { text: name(a.email) }), ' · ' + a.email]),
+      list.appendChild(h('div', { class: 'person', 'data-email': a.email }, [avatar(a.email), h('span', { class: 'e' }, [h('b', { class: 'pn', text: name(a.email) }), h('span', { class: 'ps', text: a.email })]),
         h('span', { class: 'role ' + a.role, text: a.role }),
         canRemove ? h('button', { class: 'btn danger', type: 'button', text: 'Remove', onclick: function () {
           if (!confirm('Remove ' + a.email + ' as an admin?')) return;
           api('admins', { method: 'DELETE', body: { email: a.email } }).then(function (d) { S.admins = d.admins; toast('Removed ' + a.email); renderMain(true); }).catch(function (e) { toast(e.message); });
         } }) : null]));
     });
-    var email = h('input', { class: 'input', type: 'email', placeholder: 'name@overyondr.com', 'aria-label': 'Email address' });
+    var email = h('input', { class: 'input', type: 'email', 'data-people': true, placeholder: 'Type a name or email', 'aria-label': 'Person to add (name or email)' });
     var role = h('select', { class: 'input', 'aria-label': 'Role' }, [h('option', { value: 'admin', text: 'Admin' }), isOwner ? h('option', { value: 'owner', text: 'Owner (can manage owners)' }) : null]);
     var add = h('button', { class: 'btn primary', type: 'button', text: 'Add admin', onclick: function () {
       api('admins', { method: 'POST', body: { email: email.value, role: role.value } }).then(function (d) { S.admins = d.admins; toast('Added ' + email.value); renderMain(true); }).catch(function (e) { toast(e.message); });
     } });
-    email.addEventListener('keydown', function (e) { if (e.key === 'Enter') add.click(); });
+    email.addEventListener('keydown', function (e) { if (e.key === 'Enter' && !pickerOpen(email)) add.click(); });
     var contrib = h('div', { class: 'people' });
-    S.stats.people.forEach(function (p) { contrib.appendChild(h('div', { class: 'person' }, [avatar(p.k), h('span', { class: 'e', text: p.k }),
+    S.stats.people.forEach(function (p) { contrib.appendChild(h('div', { class: 'person', 'data-email': String(p.k).toLowerCase() }, [avatar(p.k), h('span', { class: 'e' }, [h('b', { class: 'pn' }), h('span', { class: 'ps', text: p.k })]),
       h('button', { class: 'btn', type: 'button', text: p.n + ' item' + (p.n === 1 ? '' : 's'), onclick: function () { S.filters = Object.assign({}, S.filters, { q: p.k, status: '' }); loadItems().then(function () { go('inbox'); }); } })])); });
     mainEl.appendChild(h('div', { class: 'grid two' }, [
       h('div', { class: 'card' }, [h('h2', { text: 'Admins' }), list, h('div', { class: 'addrow' }, [email, role, add])]),
       h('div', { class: 'card' }, [h('h2', { text: 'Contributors' }), S.stats.people.length ? contrib : h('p', { class: 'meta', text: 'No one has left feedback yet.' })]),
     ]));
+    applyDirectory(mainEl);
   }
 
   // ------------------------------------------------------------- drawer
@@ -552,17 +606,15 @@
       var b = {}; b[field] = value;
       api('feedback/' + i.id, { method: 'PATCH', body: b }).then(function (nd) { S.detail = nd; renderDrawer(true); sync(); }).catch(function (e) { toast(e.message); });
     }
-    function select(field, label, opts, value, allowEmpty) {
+    function select(field, label, opts, value) {
       var s = h('select', { class: 'input', onchange: function () { patch(field, s.value || null); } });
-      if (allowEmpty) s.appendChild(h('option', { value: '', text: 'Unassigned' }));
       Object.keys(opts).forEach(function (k) { s.appendChild(h('option', { value: k, text: opts[k], selected: value === k })); });
       return h('label', {}, [label, s]);
     }
-    var assignees = {}; S.admins.forEach(function (a) { assignees[a.email] = name(a.email); });
-    if (i.assignee && !assignees[i.assignee]) assignees[i.assignee] = name(i.assignee);
+    var ownerField = personInput({ placeholder: 'Unassigned', title: i.assignee ? name(i.assignee) : 'Type a name to assign; clear to unassign' }, i.assignee, function (v) { patch('assignee', v); });
     body.appendChild(h('div', { class: 'controls' }, [
       select('status', 'Status', STATUS, i.status), select('priority', 'Priority', PRIORITY, i.priority),
-      select('type', 'Type', TYPES, i.type), select('assignee', 'Owner', assignees, i.assignee, true),
+      select('type', 'Type', TYPES, i.type), h('label', {}, ['Owner', ownerField]),
     ]));
 
     // Tags
