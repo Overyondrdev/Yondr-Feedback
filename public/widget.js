@@ -64,6 +64,8 @@
     ['praise', 'Love it', 'Something that works well'],
     ['other', 'Other', 'Anything else'],
   ];
+  // Shown under the message box when the type is Bug (auto-fix may file it as a public GitHub issue).
+  var PRIVACY_NOTICE = 'Bug reports may be shared publicly to get them fixed. Please don\u2019t include personal or confidential details (names, emails, phone numbers, client information).';
   var PLACEHOLDER = {
     bug: 'What happened, and what did you expect instead?',
     design: 'What would you change about how this looks?',
@@ -229,6 +231,7 @@ textarea:focus{outline:0;border-color:var(--g);box-shadow:0 0 0 3px rgba(28,48,1
 .shot img{width:100%;height:100%;object-fit:cover;display:block}\
 .shot .acts{position:absolute;inset:auto 4px 4px auto;display:flex;gap:3px}\
 .shot .acts button{width:24px;height:24px;border:0;border-radius:7px;background:rgba(28,48,11,.85);color:var(--l);display:grid;place-items:center}\
+.privacy{margin:8px 0 0;padding:8px 10px;border-radius:10px;background:var(--mist);color:var(--g);font-size:12.5px;line-height:1.45;overflow-wrap:anywhere}\
 .pin{display:flex;align-items:center;gap:8px;margin-top:10px;padding:8px 10px;border-radius:12px;background:var(--mist);color:var(--g);font-size:12.5px}\
 .pin code{font:inherit;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1}\
 .pin button{border:0;background:transparent;color:var(--g);padding:2px}\
@@ -896,7 +899,9 @@ kbd{font:600 11px/1 var(--sans);padding:2px 5px;border-radius:5px;border:1px sol
     bodyEl.appendChild(chips);
 
     bodyEl.appendChild(el('span', { class: 'label', text: 'Details' }));
-    var ta = el('textarea', { placeholder: PLACEHOLDER[state.type], 'aria-label': 'Your feedback' });
+    // Bug reports may become PUBLIC GitHub issues (auto-fix): say so, and link the notice to the message box.
+    var bugNotice = state.type === 'bug';
+    var ta = el('textarea', { placeholder: PLACEHOLDER[state.type], 'aria-label': 'Your feedback', 'aria-describedby': bugNotice ? 'yfb-privacy' : null });
     ta.value = state.message;
     ta.addEventListener('input', function () { state.message = ta.value; saveDraft(); updateSend(); });
     ta.addEventListener('keydown', function (e) { if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') send(); });
@@ -905,6 +910,7 @@ kbd{font:600 11px/1 var(--sans);padding:2px 5px;border-radius:5px;border:1px sol
       if (files.length) { e.preventDefault(); files.forEach(addFile); }
     });
     bodyEl.appendChild(ta);
+    if (bugNotice) bodyEl.appendChild(el('p', { class: 'privacy', id: 'yfb-privacy', text: PRIVACY_NOTICE }));
 
     var file = el('input', { type: 'file', accept: 'image/*', multiple: true, class: 'hidden' });
     file.addEventListener('change', function () { [].slice.call(file.files).forEach(addFile); file.value = ''; });

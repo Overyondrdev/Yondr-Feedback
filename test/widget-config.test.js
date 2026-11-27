@@ -42,3 +42,15 @@ test('default asset from data-asset / data-asset-label', () => {
   assert.deepEqual(cfg({ 'data-asset': 'ad-42' }).asset, { id: 'ad-42', label: null });
   assert.equal(cfg({ 'data-asset-label': 'no id' }).asset, null);
 });
+
+test('bug notice: shown under the message box for bugs only, linked with aria-describedby, exact wording', () => {
+  const notice = src.match(/var PRIVACY_NOTICE = '([^']+)';/);
+  assert.ok(notice, 'PRIVACY_NOTICE is defined');
+  assert.equal(JSON.parse(`"${notice[1]}"`), 'Bug reports may be shared publicly to get them fixed. Please don’t include personal or confidential details (names, emails, phone numbers, client information).');
+  assert.match(src, /var bugNotice = state\.type === 'bug';/);
+  assert.match(src, /el\('textarea', \{[^}]*'aria-describedby': bugNotice \? 'yfb-privacy' : null/);
+  assert.match(src, /if \(bugNotice\) bodyEl\.appendChild\(el\('p', \{ class: 'privacy', id: 'yfb-privacy', text: PRIVACY_NOTICE \}\)\);/);
+  // Wraps at 375 px: no fixed width, long words may break.
+  assert.match(src, /\.privacy\{[^}]*overflow-wrap:anywhere/);
+  assert.doesNotMatch(src.match(/\.privacy\{[^}]*\}/)[0], /width:/);
+});

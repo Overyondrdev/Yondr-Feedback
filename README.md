@@ -116,6 +116,10 @@ A launcher tab (or the toolbar button) opens a panel in a Shadow DOM (no style l
 - **New feedback**: type, details, priority; **Screenshot** (browser screen capture, one "Share this tab" prompt,
   then a mark-up editor: box, arrow, draw, highlight, text, blur, crop, undo), **Point at it** (pick the element),
   **Upload**, or paste/drop images (up to 6). Drafts are kept per page (and per asset) in the page's `localStorage`.
+  When the type is **Bug**, a short notice under the message box (linked to it with `aria-describedby`, so screen
+  readers read it with the box) says: *"Bug reports may be shared publicly to get them fixed. Please don't include
+  personal or confidential details (names, emails, phone numbers, client information)."* (auto-fix may file the bug as
+  a public GitHub issue; see "Yondr Ops").
 - **My feedback**: the person's items on this page/item or everywhere, status, replies from the team, reply, withdraw
   while new. A dot shows new activity.
 - Alt+Shift+F hides/shows the launcher.
@@ -144,13 +148,18 @@ reported to Yondr Ops (`ops.overyondrdev.com`, repo `Overyondrdev/yondr-ops`) in
   to, **critical** (any type), so the people subscribed in Ops are alerted.
 
 Both send the shared secret `OPS_INGEST_TOKEN` (Worker secret, optional: without it nothing is sent) in `X-Ops-Token`.
-**No personal data is sent**: no author, assignee, voter or commenter; e-mail addresses and phone numbers in the text
-are redacted; screenshots are only referenced by their path here (`/api/attachments/<id>`, which needs a Yondr
-sign-in). Sent fields: `feedback_id`, `reason` (`created`/`updated`), `project`, `asset`, `type`, `priority`,
+**No personal data is sent** (the owner accepted public auto-fix issues on that condition): no author, assignee, voter or
+commenter; `redact()` in `src/ops.js` removes from the title, message, URL, path, page title and asset: e-mail
+addresses; phone numbers (international and local formats, e.g. `+44 20 7946 0958`, `(415) 555-0100`); street
+addresses (house number + street word, e.g. `12 High Street`, `5 rue de la Paix`) with the town and postcode/ZIP
+after them; UK postcodes anywhere; and secrets: URL parameters whose name contains key/token/secret/password/auth/
+session/signature/code, Bearer/Basic credentials and well-known token formats. Dates, times, versions, ids and paths
+stay. Ops runs the same `redact()` again before opening an issue (keep the two copies identical). Screenshots are only
+referenced by their path here (`/api/attachments/<id>`, which needs a Yondr sign-in), never sent. Sent fields: `feedback_id`, `reason` (`created`/`updated`), `project`, `asset`, `type`, `priority`,
 `status`, `title`, `message`, `url`, `path`, `page_title`, `screenshots`, `admin_url`, `created_at`.
 
 Careful: the text of an item that ops sends to the auto-fix engine ends up in a GitHub issue in a **public**
-repository. Tell people not to put confidential information in bug reports.
+repository. The widget's bug notice tells people not to put personal or confidential information in bug reports.
 
 In the admin, each item's details have an **Auto-fix** row linking to its status in Ops
 (`https://ops.overyondrdev.com/#autofix/feedback/<id>`), where admins see the timeline, can mark it objective or
