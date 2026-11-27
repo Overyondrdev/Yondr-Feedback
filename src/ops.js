@@ -5,24 +5,50 @@
 //   POST /api/events            `feedback_critical` when an item is created as, or changed to, critical (any type).
 // Authenticated with the shared secret OPS_INGEST_TOKEN (Worker secret, optional): without it nothing is sent.
 // Sent with ctx.waitUntil, so the person giving feedback never waits for ops, and an ops outage never fails a request.
-// PRIVACY: no personal data leaves this Worker. No author, assignee, voter or commenter; e-mail addresses and phone
-// numbers in the text are redacted; screenshots are referenced by their path here (which needs a Yondr sign-in), never
-// sent.
+// PRIVACY: no personal data leaves this Worker (bug reports may become PUBLIC GitHub issues). No author, assignee, voter
+// or commenter; e-mail addresses, phone numbers, street addresses and postcodes, and secrets in URLs or text are
+// redacted (redact() below); screenshots are referenced by their path here (which needs a Yondr sign-in), never sent.
 export const OPS_URL = 'https://ops.overyondrdev.com';
 export const ADMIN_URL = 'https://feedback.overyondrdev.com/admin';
 
 const clip = (s, n) => String(s ?? '').slice(0, n);
+// ---- personal-data redaction (keep identical in yondr-feedback src/ops.js and yondr-ops src/triage.js) ----
+// Bug reports may end up in PUBLIC GitHub issues (auto-fix). Removed: e-mail addresses; phone numbers (international
+// and local formats, 9+ digits, or 7+ after + / 00); street addresses (house number + street word, e.g. "12 High
+// Street", "1600 Pennsylvania Ave NW", "5 rue de la Paix") with a town and postcode/ZIP that follow; UK postcodes
+// anywhere; secrets: URL parameters whose name contains key/token/secret/password/auth/session/signature/code, Bearer
+// and Basic credentials, and well-known token formats.
 const EMAIL = /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g;
-const PHONE = /(?<![\w/=.-])\+?\d[\d ()-]{7,}\d(?![\w/])/g;
+const SECRET_PARAM = /([?&;#][\w.-]*?(?:key|token|secret|passw(?:or)?d|pwd|auth|session|signature|sig|code|credential)[\w.-]*=)[^&#\s"'<>]+/gi;
+const AUTH_HEADER = /\b(Bearer|Basic)\s+[A-Za-z0-9._~+/=-]{8,}/g;
+const TOKEN = /\b(?:gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|sk-(?:ant-)?[A-Za-z0-9_-]{20,}|xox[abprs]-[A-Za-z0-9-]{10,}|AKIA[0-9A-Z]{16}|re_[A-Za-z0-9_]{20,}|eyJ[\w-]{10,}\.[\w-]{10,}\.[\w-]{10,})/g;
+const STREET = '(?:Street|St|Road|Rd|Avenue|Ave|Lane|Ln|Drive|Dr|Boulevard|Blvd|Way|Close|Court|Ct|Place|Pl|Square|Sq|Terrace|Crescent|Cres|Gardens|Grove|Hill|Row|Mews|Walk|Parkway|Pkwy|Highway|Hwy|Strasse|Straße|Weg|Gasse|Plaza)';
+const POSTCODE = '(?:[A-Z]{1,2}\\d[A-Z\\d]?\\s*\\d[A-Z]{2}|\\d{5}(?:-\\d{4})?|\\d{4}\\s?[A-Z]{2}|[A-Z]\\d[A-Z]\\s?\\d[A-Z]\\d|\\d{4})';
+const TAIL = `(?:,?\\s+(?:N|S|E|W|NE|NW|SE|SW)\\b)?(?:,?\\s+[A-Z][A-Za-z.'-]+\\b){0,3}(?:,?\\s+${POSTCODE}\\b)?`;
+const ADDRESS = new RegExp(
+  `\\b\\d{1,5}[A-Za-z]?(?:[-–]\\d{1,5})?,?\\s+(?:(?:[A-Z][A-Za-z'.-]*|of|the)\\s+){1,4}(?:${STREET}|${STREET.toLowerCase()})\\b\\.?${TAIL}` +
+  `|\\b\\d{1,5}[A-Za-z]?,?\\s+(?:[Rr]ue|[Aa]venue|[Vv]ia|[Cc]alle|[Bb]oulevard|[Pp]lace)\\s+(?:(?:de|du|des|la|le|del|di|della|von)\\s+)*[A-Z][A-Za-z'-]+(?:\\s+[A-Z][A-Za-z'-]+)?${TAIL}`, 'g');
+const UK_POSTCODE = /\b(?:[A-Z]{1,2}\d[A-Z\d]?|GIR)\s*\d[ABD-HJLNP-UW-Z]{2}\b/g;
+const PHONE = /(?<![\w/=.#-])(?:\+|00)?\(?\d[\d (). -]{5,}\d(?![\w/])/g;
 
-/** Remove e-mail addresses and phone numbers from free text. Pure. */
+/** Remove personal details and secrets from free text before it can leave for a public place. Pure. */
 export function redact(s) {
-  return String(s ?? '').replace(EMAIL, '[email removed]').replace(PHONE, (m) => {
-    // Phone numbers have 9+ digits; dates (2026-11-27) and short numbers stay.
-    if (/^\d{4}-\d{2}-\d{2}/.test(m) || m.replace(/\D/g, '').length < 9) return m;
-    return '[number removed]';
-  });
+  return String(s ?? '')
+    .replace(SECRET_PARAM, '$1[removed]')
+    .replace(AUTH_HEADER, '$1 [removed]')
+    .replace(TOKEN, '[token removed]')
+    .replace(EMAIL, '[email removed]')
+    .replace(ADDRESS, '[address removed]')
+    .replace(UK_POSTCODE, '[postcode removed]')
+    .replace(PHONE, (m) => {
+      const digits = m.replace(/\D/g, '').length;
+      // Dates (2026-11-27, 27.11.2026), times and short numbers stay; phone numbers have 9+ digits (7+ after + / 00).
+      if (/^\d{4}-\d{2}-\d{2}/.test(m) || /^\d{1,2}[.-]\d{1,2}[.-]\d{2,4}$/.test(m.trim())) return m;
+      if (digits > 15 || digits < (/^(\+|00)/.test(m) ? 7 : 9)) return m;
+      return '[number removed]';
+    });
 }
+// ---- end of personal-data redaction ----
 
 /** What ops gets about one feedback item. Pure. `attachments` = rows of the attachments table. */
 export function opsPayload(item, attachments = [], reason = 'created') {
@@ -30,7 +56,7 @@ export function opsPayload(item, attachments = [], reason = 'created') {
     feedback_id: item.id,
     reason, // created | updated
     project: item.project || item.site || null,
-    asset: item.asset || null,
+    asset: redact(clip(item.asset, 200)) || null,
     type: item.type,
     priority: item.priority,
     status: item.status,

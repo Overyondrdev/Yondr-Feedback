@@ -60,6 +60,37 @@ test('redact removes e-mail addresses and phone numbers but keeps dates, ids and
   assert.equal(redact('Broken since 2026-11-27, order 12345, /blog?offset=1700000000000'), 'Broken since 2026-11-27, order 12345, /blog?offset=1700000000000');
 });
 
+test('redact removes phone numbers (international formats), street addresses with postcodes, UK postcodes and secrets', () => {
+  const cases = [
+    ['Call +44 20 7946 0958 or 020 7946 0958', 'Call [number removed] or [number removed]'],
+    ['US +1 (415) 555-0100, 415.555.0100, 0033 1 23 45 67 89', 'US [number removed], [number removed], [number removed]'],
+    ['Client at 12 High Street, London SW1A 1AA has an error', 'Client at [address removed] has an error'],
+    ['Ship to 1600 Pennsylvania Avenue NW, Washington, DC 20500', 'Ship to [address removed]'],
+    ['Office: 5 rue de la Paix, Paris 75002', 'Office: [address removed]'],
+    ['221B Baker Street', '[address removed]'],
+    ['Postcode EC1A 1BB', 'Postcode [postcode removed]'],
+    ['https://v1.overyondrdev.com/p?token=abc123&page=2&api_key=SECRET&sig=zz', 'https://v1.overyondrdev.com/p?token=[removed]&page=2&api_key=[removed]&sig=[removed]'],
+    ['/reset?session=xyz&password=hunter2', '/reset?session=[removed]&password=[removed]'],
+    ['Authorization: Bearer abcdefghijklmnop', 'Authorization: Bearer [removed]'],
+    ['key ghp_abcdefghijklmnopqrstuvwxyz123456', 'key [token removed]'],
+  ];
+  for (const [input, want] of cases) assert.equal(redact(input), want, input);
+  // Ordinary bug details stay.
+  const keep = 'Since 2026-11-27 at 14:30 (v1.0.290), the 3 links on /careers?ref=nav overflow at 375px; order #123456; 27.11.2026; commit 4411a9e9b0283becf4b924f7bce360fd7756c78c';
+  assert.equal(redact(keep), keep);
+});
+
+test('the payload never carries author, assignee, voters, commenters or screenshot data, and redacts every text field', () => {
+  const item = { id: 9, project: 'v1', type: 'bug', priority: 'normal', status: 'new', created_at: '2026-11-27T10:00:00Z',
+    title: 'Form fails for +44 20 7946 0958', message: 'At 12 High Street, London SW1A 1AA', url: 'https://v1.overyondrdev.com/x?token=abc123',
+    path: '/x?api_key=SECRET', page_title: 'Call 020 7946 0958', asset: 'Logo for ben.admin@overyondr.com',
+    author_email: STAFF, author_name: 'Cy Staff', assignee: OWNER, voters: [OWNER], comments: [{ author: STAFF, body: 'hi' }] };
+  const p = opsPayload(item, [{ id: 'abc', data: PNG }]);
+  const text = JSON.stringify(p);
+  for (const bad of ['7946', 'High Street', 'SW1A', 'abc123', 'SECRET', '@overyondr.com', 'Cy Staff', 'base64', 'hi"']) assert.ok(!text.includes(bad), bad);
+  assert.deepEqual(p.screenshots, ['/api/attachments/abc'], 'only the sign-in-protected path');
+});
+
 test('the payload carries what triage needs and nothing personal', () => {
   const item = { id: 7, project: 'v1', asset: null, type: 'bug', priority: 'high', status: 'new', title: 'Footer link 404', message: 'Tell ben.admin@overyondr.com',
     url: 'https://v1.overyondrdev.com/about?x=1', path: '/about', page_title: 'About', author_email: STAFF, assignee: OWNER, created_at: '2026-11-27T10:00:00Z' };
